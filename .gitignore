@@ -1,0 +1,6 @@
+.DS_Store
+*.bin
+repository.json
+main
+accountant_linux_amd64
+dist/
