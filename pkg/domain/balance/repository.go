@@ -1,6 +1,7 @@
 package balance
 
 import (
+	"context"
 	"time"
 
 	"github.com/lunemec/eve-accountant/pkg/domain/balance/aggregate"
@@ -10,6 +11,6 @@ import (
 type Repository interface {
 	CharacterID() entity.CharacterID
 	CorporationID() entity.CorporationID
-	WalletDivisions() ([]aggregate.Division, error)
-	WalletJournal(division aggregate.Division, from, to time.Time) ([]aggregate.JournalRecord, error)
+	WalletDivisions(ctx context.Context) ([]aggregate.Division, error)
+	WalletJournal(ctx context.Context, division aggregate.Division, from, to time.Time) (chan aggregate.JournalRecord, error)
 }

@@ -8,6 +8,8 @@ import (
 	"time"
 
 	balanceDomain "github.com/lunemec/eve-accountant/pkg/domain/balance"
+	"github.com/lunemec/eve-accountant/pkg/domain/balance/entity"
+	"github.com/lunemec/eve-accountant/pkg/domain/balance/repository"
 	balanceDomainExternalRepository "github.com/lunemec/eve-accountant/pkg/domain/balance/repository/external/esi"
 	discordHandler "github.com/lunemec/eve-accountant/pkg/handlers/discord"
 	notifierHandler "github.com/lunemec/eve-accountant/pkg/handlers/notifier"
@@ -15,6 +17,7 @@ import (
 	authRepository "github.com/lunemec/eve-bot-pkg/repositories/auth"
 	authService "github.com/lunemec/eve-bot-pkg/services/auth"
 
+	"github.com/asdine/storm/v3"
 	"github.com/bwmarrin/discordgo"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
@@ -30,8 +33,9 @@ var runCmd = &cobra.Command{
 }
 
 var (
-	checkInterval  time.Duration
-	notifyInterval time.Duration
+	checkInterval   time.Duration
+	notifyInterval  time.Duration
+	notifyThreshold float64
 
 	discordChannelID string
 	discordAuthToken string
@@ -49,6 +53,7 @@ func init() {
 	runCmd.Flags().StringVar(&discordAuthToken, "discord_auth_token", "", "Auth token for discord")
 	runCmd.Flags().DurationVar(&checkInterval, "check_interval", 30*time.Minute, "how often to check EVE ESI API (default 30min)")
 	runCmd.Flags().DurationVar(&notifyInterval, "notify_interval", 24*time.Hour, "how often to spam Discord (default 24H)")
+	runCmd.Flags().Float64Var(&notifyThreshold, "notify_threshold", 1000000000, "balance under which to notify (default 1 000 000 000 ISK)")
 
 	must(runCmd.MarkFlagRequired("session_key"))
 	must(runCmd.MarkFlagRequired("eve_client_id"))
@@ -76,6 +81,12 @@ func runWrapper(log *zap.Logger, cmd *cobra.Command, args []string) error {
 	signalChan := make(chan os.Signal)
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
 
+	db, err := storm.Open("accountant.db")
+	if err != nil {
+		return errors.Wrap(err, "error openning DB")
+	}
+	defer db.Close()
+
 	var (
 		authServices    []authService.Service
 		esiRepositories []balanceDomain.Repository
@@ -101,7 +112,7 @@ func runWrapper(log *zap.Logger, cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return errors.Wrapf(err, "error initializing ESI repository from: %s", authfile)
 		}
-		esiRepositories = append(esiRepositories, esiRepository)
+		esiRepositories = append(esiRepositories, repository.New(db, esiRepository))
 	}
 	defer closeAuth(log, authServices)
 
@@ -115,13 +126,13 @@ func runWrapper(log *zap.Logger, cmd *cobra.Command, args []string) error {
 	}
 	var t tomb.Tomb
 
-	// TODO historical records balanceRepo := balanceDomainRepository.New(esiRepositories...)
 	balanceSvc := balanceDomain.NewService(esiRepositories...)
-	accountantSvc := accountantService.New(balanceSvc)
+	accountantSvc := accountantService.New(balanceSvc, entity.Amount(notifyThreshold))
 	discordHandler := discordHandler.New(
 		t.Context(nil),
 		log,
 		discord,
+		discordChannelID,
 		accountantSvc,
 	)
 	notifierHandler := notifierHandler.New(
@@ -130,6 +141,7 @@ func runWrapper(log *zap.Logger, cmd *cobra.Command, args []string) error {
 		checkInterval,
 		notifyInterval,
 		accountantSvc,
+		discordHandler.MonthlyBalanceBelowThresholdMessage,
 	)
 
 	t.Go(func() error {

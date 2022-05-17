@@ -4,10 +4,14 @@ import (
 	"context"
 	"time"
 
+	"github.com/lunemec/eve-accountant/pkg/domain/balance/aggregate"
 	"github.com/lunemec/eve-accountant/pkg/services/accountant"
+	"github.com/pkg/errors"
 
 	"go.uber.org/zap"
 )
+
+type sendMsgFunc func(context.Context, aggregate.MonthlyBalanceNotification)
 
 type notifierHandler struct {
 	ctx            context.Context
@@ -15,6 +19,8 @@ type notifierHandler struct {
 	checkInterval  time.Duration
 	notifyInterval time.Duration
 	accountantSvc  accountant.Service
+
+	sendMsgFunc sendMsgFunc
 }
 
 type doctrineContractsService interface {
@@ -25,6 +31,7 @@ func New(
 	log *zap.Logger,
 	checkInterval, notifyInterval time.Duration,
 	accountantSvc accountant.Service,
+	sendMsgFunc sendMsgFunc,
 ) *notifierHandler {
 	notifier := notifierHandler{
 		ctx:            ctx,
@@ -32,12 +39,19 @@ func New(
 		checkInterval:  checkInterval,
 		notifyInterval: notifyInterval,
 		accountantSvc:  accountantSvc,
+		sendMsgFunc:    sendMsgFunc,
 	}
 	return &notifier
 }
 
 func (n *notifierHandler) Start() {
 	n.log.Info("Notifier handler started.")
+	// Tick 1x at startup.
+	err := n.tick()
+	if err != nil {
+		n.log.Error("notifier error", zap.Error(err))
+	}
+
 	ticker := time.NewTicker(n.checkInterval)
 	for {
 		select {
@@ -54,5 +68,16 @@ func (n *notifierHandler) Start() {
 
 // tick is called every ticker interval.
 func (n *notifierHandler) tick() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	notify, balance, err := n.accountantSvc.MonthlyBalanceBelowThreshold(ctx)
+	if err != nil {
+		return errors.Wrap(err, "error")
+	}
+	if notify {
+		n.sendMsgFunc(ctx, balance)
+	}
+
 	return nil
 }

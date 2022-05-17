@@ -4,6 +4,7 @@ go 1.12
 
 require (
 	github.com/antihax/goesi v0.0.0-20220324030117-df4f88e24c03
+	github.com/asdine/storm/v3 v3.2.1 // indirect
 	github.com/braintree/manners v0.0.0-20160418043613-82a8879fc5fd
 	github.com/bwmarrin/discordgo v0.23.2
 	github.com/dustin/go-humanize v1.0.0
@@ -21,8 +22,10 @@ require (
 	github.com/spf13/cobra v1.1.3
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/viper v1.7.1
+	go.etcd.io/bbolt v1.3.6 // indirect
 	go.uber.org/zap v1.21.0
 	golang.org/x/crypto v0.0.0-20210322153248-0c34fe9e7dc2 // indirect
+	golang.org/x/sys v0.0.0-20220503163025-988cb79eb6c6 // indirect
 	gopkg.in/ini.v1 v1.62.0 // indirect
 	gopkg.in/tomb.v2 v2.0.0-20161208151619-d5d1b5820637
 )

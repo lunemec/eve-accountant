@@ -14,7 +14,7 @@ import (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "eve-accountant",
-	Short: "Discord bot for keeping track of corporation ISK income/spend.",
+	Short: "Discord bot for keeping track of corporation ISK income/expenses.",
 	Long:  ``,
 }
 

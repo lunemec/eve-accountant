@@ -9,25 +9,13 @@ import (
 
 // helpHandler will be called every time a new
 // message is created on any channel that the autenticated bot has access to.
-func (h *discordHandler) helpHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Ignore all messages created by the bot itself.
-	if m.Author.ID == s.State.User.ID {
-		return
-	}
-
-	if m.Content != "!help" && m.Content != "!accountant" {
-		return
-	}
-	msg := "I'll keep you updated about our current doctrine ship stock listed on contracts. \n\n" +
+func (h *discordHandler) helpHandler(s *discordgo.Session, m *discordgo.MessageCreate, args []string) {
+	msg := "I'll keep track of your transactions and help with corporation ISK. \n\n" +
 		"Here is the list of commands you can use:\n" +
-		"`!help` or `!accountant` - shows this help message\n" +
-		"`!report` or `!qm` - shows a report of missing stock\n" +
-		"`!report full` - shows full report of required doctrines with stock/missing counts\n" +
-		"`!stock` - shows currently available ships on contract\n" +
-		"`!require NN Alliance|Corporation Doctrine name` - require to have `Doctrine name` `NN`" +
-		" times on alliance or corporation contracts at all times (0 to remove)\n" +
-		"`!require list` - list of doctrine ships required to have on contract at all times\n" +
-		"`!parse excel` - parse copy+pasted columns from excel (sheet)"
+		"`!help` - shows this help message\n" +
+		"`!isk` - top level balance overview\n" +
+		"`!isk by division` - balance overview grouped by each division\n" +
+		"`!isk by type` - balance overview grouped by transaction type"
 
 	_, err := h.discord.ChannelMessageSendEmbed(m.ChannelID, &discordgo.MessageEmbed{
 		Title: "Hello, I'm your accountant.",

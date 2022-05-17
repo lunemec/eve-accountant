@@ -1,6 +1,7 @@
 package balance
 
 import (
+	"context"
 	"time"
 
 	"github.com/lunemec/eve-accountant/pkg/domain/balance/aggregate"
@@ -9,7 +10,9 @@ import (
 )
 
 type Service interface {
-	Balance(from, to time.Time) (*aggregate.Balance, error)
+	Balance(ctx context.Context, from, to time.Time) (*aggregate.Balance, error)
+	BalanceByDivision(ctx context.Context, from, to time.Time) (*aggregate.BalanceByDivision, error)
+	BalanceByType(ctx context.Context, from, to time.Time) (*aggregate.BalanceByType, error)
 }
 
 type balanceService struct {
@@ -22,11 +25,93 @@ func NewService(repositories ...Repository) *balanceService {
 	}
 }
 
-func (s *balanceService) Balance(from, to time.Time) (*aggregate.Balance, error) {
+func (s *balanceService) Balance(ctx context.Context, from, to time.Time) (*aggregate.Balance, error) {
 	totalBalance := aggregate.NewBalance()
 
 	for _, repository := range s.repositories {
-		balance, err := s.balanceForRepository(repository, from, to)
+		balance, err := s.balanceForRepository(ctx, repository, from, to)
+		if err != nil {
+			return totalBalance, errors.Wrapf(err, "error loading balance for corporation: %d", repository.CorporationID())
+		}
+		totalBalance.Sum(balance)
+	}
+	return totalBalance, nil
+}
+
+func (s *balanceService) balanceForRepository(ctx context.Context, repository Repository, from, to time.Time) (*aggregate.Balance, error) {
+	balance := aggregate.NewBalance()
+
+	divisions, err := repository.WalletDivisions(ctx)
+	if err != nil {
+		return balance, errors.Wrapf(err, "error listing divisions for corporation: %d", repository.CorporationID())
+	}
+	for _, division := range divisions {
+		journalRecords, err := repository.WalletJournal(ctx, division, from, to)
+		if err != nil {
+			return balance, errors.Wrap(err, "unable to list journal records")
+		}
+
+		for journalRecord := range journalRecords {
+			if journalRecord.Amount > 0 {
+				balance.Income += journalRecord.Amount
+			}
+			if journalRecord.Amount < 0 {
+				balance.Expenses += journalRecord.Amount
+			}
+		}
+	}
+
+	return balance, nil
+}
+
+func (s *balanceService) BalanceByDivision(ctx context.Context, from, to time.Time) (*aggregate.BalanceByDivision, error) {
+	totalBalance := aggregate.NewBalanceByDivision()
+
+	for _, repository := range s.repositories {
+		balance, err := s.balanceByDivisionForRepository(ctx, repository, from, to)
+		if err != nil {
+			return totalBalance, errors.Wrapf(err, "error loading balance for corporation: %d", repository.CorporationID())
+		}
+		totalBalance.Sum(balance)
+	}
+	return totalBalance, nil
+}
+
+func (s *balanceService) balanceByDivisionForRepository(ctx context.Context, repository Repository, from, to time.Time) (*aggregate.BalanceByDivision, error) {
+	balance := aggregate.NewBalanceByDivision()
+
+	divisions, err := repository.WalletDivisions(ctx)
+	if err != nil {
+		return balance, errors.Wrapf(err, "error listing divisions for corporation: %d", repository.CorporationID())
+	}
+	for _, division := range divisions {
+		divisionName := division.Name
+		if divisionName == "" {
+			divisionName = "Main"
+		}
+		journalRecords, err := repository.WalletJournal(ctx, division, from, to)
+		if err != nil {
+			return balance, errors.Wrap(err, "unable to list journal records")
+		}
+
+		for journalRecord := range journalRecords {
+			if journalRecord.Amount > 0 {
+				balance.IncomeByDivision[divisionName] += journalRecord.Amount
+			}
+			if journalRecord.Amount < 0 {
+				balance.ExpensesByDivision[divisionName] += journalRecord.Amount
+			}
+		}
+	}
+
+	return balance, nil
+}
+
+func (s *balanceService) BalanceByType(ctx context.Context, from, to time.Time) (*aggregate.BalanceByType, error) {
+	totalBalance := aggregate.NewBalanceByType()
+
+	for _, repository := range s.repositories {
+		balance, err := s.balanceByTypeForRepository(ctx, repository, from, to)
 		if err != nil {
 			return totalBalance, errors.Wrapf(err, "error loading balance for corporation: %d", repository.CorporationID())
 		}
@@ -35,26 +120,25 @@ func (s *balanceService) Balance(from, to time.Time) (*aggregate.Balance, error)
 	return s.groupTypes(totalBalance), nil
 }
 
-func (s *balanceService) balanceForRepository(repository Repository, from, to time.Time) (*aggregate.Balance, error) {
-	balance := aggregate.NewBalance()
+func (s *balanceService) balanceByTypeForRepository(ctx context.Context, repository Repository, from, to time.Time) (*aggregate.BalanceByType, error) {
+	balance := aggregate.NewBalanceByType()
 
-	divisions, err := repository.WalletDivisions()
+	divisions, err := repository.WalletDivisions(ctx)
 	if err != nil {
 		return balance, errors.Wrapf(err, "error listing divisions for corporation: %d", repository.CorporationID())
 	}
 	for _, division := range divisions {
-		journalRecords, err := repository.WalletJournal(division, from, to)
+		journalRecords, err := repository.WalletJournal(ctx, division, from, to)
 		if err != nil {
 			return balance, errors.Wrap(err, "unable to list journal records")
 		}
 
-		for _, journalRecord := range journalRecords {
-			balance.AmountByType[journalRecord.RefType] += journalRecord.Amount
+		for journalRecord := range journalRecords {
 			if journalRecord.Amount > 0 {
-				balance.Income += journalRecord.Amount
+				balance.IncomeByType[journalRecord.RefType] += journalRecord.Amount
 			}
 			if journalRecord.Amount < 0 {
-				balance.Expenses += journalRecord.Amount
+				balance.ExpensesByType[journalRecord.RefType] += journalRecord.Amount
 			}
 		}
 	}
@@ -86,6 +170,7 @@ var (
 		entity.RefType("planetary_import_tax"):              piTaxType,
 		entity.RefType("contract_deposit_refund"):           contractPriceType,
 		entity.RefType("contract_auction_bid_refund"):       contractPriceType,
+		entity.RefType("contract_auction_sold"):             contractPriceType,
 		entity.RefType("insurance"):                         rewardType,
 		entity.RefType("bounty_prizes"):                     rewardType,
 		entity.RefType("corporate_reward_payout"):           rewardType,
@@ -107,23 +192,29 @@ var (
 		entity.RefType("contract_deposit_corp"):             contractPriceType,
 		entity.RefType("contract_reward_deposited_corp"):    contractPriceType,
 		entity.RefType("contract_price_payment_corp"):       contractPriceType,
+		entity.RefType("contract_reward_refund"):            contractPriceType,
 		entity.RefType("brokers_fee"):                       marketTransactionType,
 		entity.RefType("transaction_tax"):                   marketTransactionType,
 		entity.RefType("market_escrow"):                     marketTransactionType,
 	}
 )
 
-func (s *balanceService) groupTypes(balance *aggregate.Balance) *aggregate.Balance {
-	balanceOut := aggregate.NewBalance()
-	balanceOut.Income = balance.Income
-	balanceOut.Expenses = balance.Expenses
+func (s *balanceService) groupTypes(balance *aggregate.BalanceByType) *aggregate.BalanceByType {
+	balanceOut := aggregate.NewBalanceByType()
 
-	for typeIn, amountIn := range balance.AmountByType {
+	for typeIn, amountIn := range balance.IncomeByType {
 		typeOut, ok := refTypeGroups[typeIn]
 		if !ok {
 			typeOut = typeIn
 		}
-		balanceOut.AmountByType[typeOut] += amountIn
+		balanceOut.IncomeByType[typeOut] += amountIn
+	}
+	for typeIn, amountIn := range balance.ExpensesByType {
+		typeOut, ok := refTypeGroups[typeIn]
+		if !ok {
+			typeOut = typeIn
+		}
+		balanceOut.ExpensesByType[typeOut] += amountIn
 	}
 
 	return balanceOut

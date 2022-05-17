@@ -2,12 +2,10 @@ package discord
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
 	balanceDomainAggrgate "github.com/lunemec/eve-accountant/pkg/domain/balance/aggregate"
-	balanceDomainEntity "github.com/lunemec/eve-accountant/pkg/domain/balance/entity"
 
 	"github.com/bwmarrin/discordgo"
 	"github.com/dustin/go-humanize"
@@ -16,112 +14,57 @@ import (
 
 // iskHandler will be called every time a new
 // message is created on any channel that the autenticated bot has access to.
-func (h *discordHandler) iskHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Ignore all messages created by the bot itself.
-	if m.Author.ID == s.State.User.ID {
-		return
-	}
-
-	if m.Content != "!isk" && m.Content != "!accountant" {
-		return
-	}
+func (h *discordHandler) iskHandler(s *discordgo.Session, m *discordgo.MessageCreate, args []string) {
 	// React before starting the balance calculation (it takes quite few seconds to fetch everything).
 	err := h.discord.MessageReactionAdd(m.ChannelID, m.ID, `⏱️`)
 	if err != nil {
-		h.error(errors.Wrap(err, "error reacting with :stopwatch: emoji"), m)
+		h.error(errors.Wrap(err, "error reacting with :stopwatch: emoji"), m.ChannelID)
 	}
-	now := time.Now()
-	currentYear, currentMonth, _ := now.Date()
 
-	dateStart := time.Date(currentYear, currentMonth, 1, 0, 0, 0, 0, time.UTC)
-	dateEnd := dateStart.AddDate(0, 1, -1)
-
-	balance, err := h.accountantSvc.Balance(dateStart, dateEnd)
+	dateStart, dateEnd, err := h.parseDateStartDateEnd(args)
 	if err != nil {
-		h.error(errors.Wrap(err, "error calculating balance"), m)
+		h.error(err, m.ChannelID)
 		return
 	}
 
-	for _, messages := range h.iskMessages(balance) {
+	balance, err := h.accountantSvc.Balance(h.ctx, dateStart, dateEnd)
+	if err != nil {
+		h.error(errors.Wrap(err, "error calculating balance"), m.ChannelID)
+		return
+	}
+
+	for _, messages := range h.iskMessages(dateStart, dateEnd, balance) {
 		_, err = h.discord.ChannelMessageSendEmbed(m.ChannelID, messages)
 		if err != nil {
-			h.error(errors.Wrap(err, "error sending balance message"), m)
+			h.error(errors.Wrap(err, "error sending balance message"), m.ChannelID)
 			return
 		}
 	}
-	return
 }
 
-type balanceRow struct {
-	Type   balanceDomainEntity.RefType
-	Amount balanceDomainEntity.Amount
-}
-
-func (h *discordHandler) iskMessages(balance *balanceDomainAggrgate.Balance) []*discordgo.MessageEmbed {
-	var descriptionRowData = make([]balanceRow, 0, len(balance.AmountByType))
-
-	for refType, amount := range balance.AmountByType {
-		descriptionRowData = append(descriptionRowData, balanceRow{
-			Type:   refType,
-			Amount: amount,
-		})
-	}
-	sort.Slice(descriptionRowData, func(i, j int) bool {
-		return descriptionRowData[i].Amount > descriptionRowData[j].Amount
-	})
-
+func (h *discordHandler) iskMessages(dateStart, dateEnd time.Time, balance *balanceDomainAggrgate.Balance) []*discordgo.MessageEmbed {
 	var (
 		balanceDescription strings.Builder
-		totalIncome        float64
-		totalExpenses      float64
-		income             strings.Builder
-		expenses           strings.Builder
-
-		format = "#\u202F###."
 	)
-
-	income.WriteString("```")
-	expenses.WriteString("```")
-	for _, descriptionRow := range descriptionRowData {
-		if descriptionRow.Amount > 0 {
-			totalIncome += float64(descriptionRow.Amount)
-			income.WriteString(fmt.Sprintf("%s  %s\n", humanize.FormatFloat(format, float64(descriptionRow.Amount)), string(descriptionRow.Type)))
-		}
-		if descriptionRow.Amount < 0 {
-			totalExpenses += float64(descriptionRow.Amount)
-			expenses.WriteString(fmt.Sprintf("%s  %s\n", humanize.FormatFloat(format, float64(descriptionRow.Amount)), string(descriptionRow.Type)))
-		}
-	}
-	income.WriteString("```")
-	expenses.WriteString("```")
 
 	balanceDescription.WriteString(
 		fmt.Sprintf(
-			"Income: `%s`\nExpenses: `%s`\n\n Balance: `%s`\n\nIncome Raw: `%s`\nExpenses Raw: `%s`\n\nBalance Raw: `%s`",
-			humanize.FormatFloat(format, totalIncome),
-			humanize.FormatFloat(format, totalExpenses),
-			humanize.FormatFloat(format, totalIncome+totalExpenses), // We must add because totalExpense is negative.
-			humanize.FormatFloat(format, float64(balance.Income)),
-			humanize.FormatFloat(format, float64(balance.Expenses)),
-			humanize.FormatFloat(format, float64(balance.Income)+float64(balance.Expenses)), // We must add because Expenses is negative.
+			"`%s`\n\n%s: `%s`\n%s: `%s`\n\n%s",
+			humanize.FormatFloat(floatFormat, float64(balance.Balance())),
+			incomeMsg,
+			humanize.FormatFloat(floatFormat, float64(balance.Income)),
+			expensesMsg,
+			humanize.FormatFloat(floatFormat, float64(balance.Expenses)),
+			forMoreDetailsMsg,
 		),
 	)
 
+	title := fmt.Sprintf("%s %s", balanceMsg, titleWithDate(dateStart, dateEnd))
 	var messages = []*discordgo.MessageEmbed{
 		{
-			Title:       "Balance",
+			Title:       title,
 			Description: balanceDescription.String(),
-			Color:       0x0000ff,
-		},
-		{
-			Title:       "Income",
-			Description: income.String(),
-			Color:       0x00ff00,
-		},
-		{
-			Title:       "Expenses",
-			Description: expenses.String(),
-			Color:       0xff0000,
+			Color:       0xffffff,
 		},
 	}
 
