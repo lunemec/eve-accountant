@@ -8,6 +8,7 @@ import (
 
 type AmountByType map[entity.RefType]entity.Amount
 type AmountByDivision map[entity.DivisionName]entity.Amount
+type AmountByDivisionByType map[entity.DivisionName]map[entity.RefType]entity.Amount
 
 type Balance struct {
 	Income   entity.Amount
@@ -71,6 +72,42 @@ func (abt AmountByDivision) sum(other AmountByDivision) {
 	for divisionName, amount := range other {
 		abt[divisionName] += amount
 	}
+}
+
+type BalanceByDivisionByType struct {
+	Timestamp time.Time
+	Income    AmountByDivisionByType
+	Expenses  AmountByDivisionByType
+}
+
+func NewBalanceByDivisionByType(timestamp time.Time) *BalanceByDivisionByType {
+	return &BalanceByDivisionByType{
+		Timestamp: timestamp,
+		Income:    make(AmountByDivisionByType),
+		Expenses:  make(AmountByDivisionByType),
+	}
+}
+
+func (b *BalanceByDivisionByType) Sum(other *BalanceByDivisionByType) {
+	b.Income.Sum(other.Income)
+	b.Expenses.Sum(other.Expenses)
+}
+
+func (b AmountByDivisionByType) Sum(other AmountByDivisionByType) {
+	for divisionName, byRefType := range other {
+		for refType, amount := range byRefType {
+			b.Record(divisionName, refType, amount)
+		}
+	}
+}
+
+func (b AmountByDivisionByType) Record(divisionName entity.DivisionName, refType entity.RefType, amount entity.Amount) {
+	byEntity, ok := b[divisionName]
+	if !ok {
+		byEntity = make(map[entity.RefType]entity.Amount)
+	}
+	byEntity[refType] += amount
+	b[divisionName] = byEntity
 }
 
 type MonthlyBalanceNotification struct {

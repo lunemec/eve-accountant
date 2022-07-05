@@ -14,6 +14,7 @@ type Service interface {
 	Balance(ctx context.Context, from, to time.Time) (*aggregate.Balance, error)
 	BalanceByDivision(ctx context.Context, from, to time.Time) (*aggregate.BalanceByDivision, error)
 	BalanceByType(ctx context.Context, from, to time.Time) (*aggregate.BalanceByType, error)
+	BalanceByDayByDivisionByType(ctx context.Context, from, to time.Time) ([]*aggregate.BalanceByDivisionByType, error)
 	MonthlyBalanceBelowThreshold(ctx context.Context) (bool, aggregate.MonthlyBalanceNotification, error)
 }
 
@@ -31,6 +32,10 @@ func New(balanceSvc balance.Service, monthlyBalanceThreshold entity.Amount) *acc
 
 func (s *accountantService) Balance(ctx context.Context, from, to time.Time) (*aggregate.Balance, error) {
 	return s.balanceSvc.Balance(ctx, from, to)
+}
+
+func (s *accountantService) BalanceByDayByDivisionByType(ctx context.Context, from, to time.Time) ([]*aggregate.BalanceByDivisionByType, error) {
+	return s.balanceSvc.BalanceByDayByDivisionByType(ctx, from, to)
 }
 
 func (s *accountantService) BalanceByDivision(ctx context.Context, from, to time.Time) (*aggregate.BalanceByDivision, error) {

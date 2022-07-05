@@ -2,7 +2,7 @@
 
 ## TODO:
 - [ ] - Buyback (contract/buy/sell) of commodities
-- [ ] - ? not sure if !isk absolute for raw necessary now
+- [x] - ? not sure if !isk absolute for raw necessary now
 - [x] movement by division
 - [x] - Top level is just absolute movement + balance 
 - [x] - Movement by type

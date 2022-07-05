@@ -21,9 +21,8 @@ type notifierHandler struct {
 	accountantSvc  accountant.Service
 
 	sendMsgFunc sendMsgFunc
-}
 
-type doctrineContractsService interface {
+	lastNotify time.Time
 }
 
 func New(
@@ -68,6 +67,19 @@ func (n *notifierHandler) Start() {
 
 // tick is called every ticker interval.
 func (n *notifierHandler) tick() error {
+	now := time.Now()
+	if now.After(n.lastNotify.Add(n.notifyInterval)) {
+		err := n.notify()
+		if err != nil {
+			return err
+		}
+
+		n.lastNotify = now
+	}
+	return nil
+}
+
+func (n *notifierHandler) notify() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 

@@ -13,6 +13,7 @@ type Service interface {
 	Balance(ctx context.Context, from, to time.Time) (*aggregate.Balance, error)
 	BalanceByDivision(ctx context.Context, from, to time.Time) (*aggregate.BalanceByDivision, error)
 	BalanceByType(ctx context.Context, from, to time.Time) (*aggregate.BalanceByType, error)
+	BalanceByDayByDivisionByType(ctx context.Context, from, to time.Time) ([]*aggregate.BalanceByDivisionByType, error)
 }
 
 type balanceService struct {
@@ -62,6 +63,62 @@ func (s *balanceService) balanceForRepository(ctx context.Context, repository Re
 	}
 
 	return balance, nil
+}
+
+func (s *balanceService) BalanceByDayByDivisionByType(ctx context.Context, from, to time.Time) ([]*aggregate.BalanceByDivisionByType, error) {
+	var dailyBalance []*aggregate.BalanceByDivisionByType
+
+	for d := from; d.After(to) == false; d = d.AddDate(0, 0, 1) {
+		fromTime := d
+		toTime := d.Add(24*time.Hour - 1*time.Nanosecond)
+		dayBalance := aggregate.NewBalanceByDivisionByType(fromTime)
+		for _, repository := range s.repositories {
+			balance, err := s.balanceByDayByDivisionByType(ctx, repository, fromTime, toTime)
+			if err != nil {
+				return nil, errors.Wrapf(err, "error loading balance for corporation: %d", repository.CorporationID())
+			}
+			dayBalance.Sum(balance)
+		}
+		dailyBalance = append(dailyBalance, dayBalance)
+	}
+
+	return dailyBalance, nil
+}
+
+func (s *balanceService) balanceByDayByDivisionByType(ctx context.Context, repository Repository, from, to time.Time) (*aggregate.BalanceByDivisionByType, error) {
+	balanceByDivisionByType := aggregate.NewBalanceByDivisionByType(from)
+
+	divisions, err := repository.WalletDivisions(ctx)
+	if err != nil {
+		return balanceByDivisionByType, errors.Wrapf(err, "error listing divisions for corporation: %d", repository.CorporationID())
+	}
+	for _, division := range divisions {
+		journalRecords, err := repository.WalletJournal(ctx, division, from, to)
+		if err != nil {
+			return balanceByDivisionByType, errors.Wrap(err, "unable to list journal records")
+		}
+
+		divisionName := division.Name
+		if divisionName == "" {
+			divisionName = "Main"
+		}
+
+		for journalRecord := range journalRecords {
+			typeOut, ok := refTypeGroups[journalRecord.RefType]
+			if !ok {
+				typeOut = journalRecord.RefType
+			}
+
+			if journalRecord.Amount > 0 {
+				balanceByDivisionByType.Income.Record(divisionName, typeOut, journalRecord.Amount)
+			}
+			if journalRecord.Amount < 0 {
+				balanceByDivisionByType.Expenses.Record(divisionName, typeOut, journalRecord.Amount)
+			}
+		}
+	}
+
+	return balanceByDivisionByType, nil
 }
 
 func (s *balanceService) BalanceByDivision(ctx context.Context, from, to time.Time) (*aggregate.BalanceByDivision, error) {

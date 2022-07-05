@@ -4,13 +4,14 @@ go 1.12
 
 require (
 	github.com/antihax/goesi v0.0.0-20220324030117-df4f88e24c03
-	github.com/asdine/storm/v3 v3.2.1 // indirect
+	github.com/asdine/storm/v3 v3.2.1
 	github.com/braintree/manners v0.0.0-20160418043613-82a8879fc5fd
 	github.com/bwmarrin/discordgo v0.23.2
 	github.com/dustin/go-humanize v1.0.0
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/go-chi/chi v4.1.2+incompatible // indirect
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79
+	github.com/henomis/quickchart-go v1.0.0
 	github.com/lunemec/eve-bot-pkg v0.0.0-20220420150703-33170ffb5e79
 	github.com/magiconair/properties v1.8.4 // indirect
 	github.com/mitchellh/mapstructure v1.4.1 // indirect

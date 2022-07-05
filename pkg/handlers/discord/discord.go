@@ -19,7 +19,7 @@ var (
 	incomeMsg                     = ":chart_with_upwards_trend: Income"
 	expensesMsg                   = ":chart_with_downwards_trend: Expenses"
 	monthlyBalanceNotificationMsg = ":exclamation: Monthly Balance Low"
-	forMoreDetailsMsg             = "For more details run:\n\n`!isk by division`\n`!isk by type`\n`!isk YYYY-MM-DD YYYY-MM-DD`\n`!isk by division YYYY-MM-DD YYYY-MM-DD`\n`!isk by type YYYY-MM-DD YYYY-MM-DD`"
+	forMoreDetailsMsg             = "For more details run:\n\n`!isk by division`\n`!isk by type`\n`!isk graph`\n\n`!isk YYYY-MM-DD YYYY-MM-DD`\n`!isk by division YYYY-MM-DD YYYY-MM-DD`\n`!isk by type YYYY-MM-DD YYYY-MM-DD`\n`!isk graph YYYY-MM-DD YYYY-MM-DD`"
 )
 
 type discordHandler struct {
@@ -67,6 +67,15 @@ func (h *discordHandler) router(s *discordgo.Session, m *discordgo.MessageCreate
 	}
 	if ok, args := h.command("!isk by type", m.Content); ok {
 		h.iskByTypeHandler(s, m, args)
+		return
+	}
+
+	if ok, args := h.command("!isk chart", m.Content); ok {
+		h.iskGraphHandler(s, m, args)
+		return
+	}
+	if ok, args := h.command("!isk graph", m.Content); ok {
+		h.iskGraphHandler(s, m, args)
 		return
 	}
 	if ok, args := h.command("!isk", m.Content); ok {
